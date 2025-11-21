@@ -4,8 +4,5 @@ seaborn
 numpy
 scikit-learn
 datetime
-plotly
-lightgbm
-xgboost
-catboost
-tabulate
+=======
+>>>>>>> cda94000232421fb710dc576d26e5beb685f66f2
