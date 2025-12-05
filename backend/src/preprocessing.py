@@ -38,14 +38,15 @@ def categorize_crime(crime):
     if not isinstance(crime, str):
         return 'جرائم متنوعة / Miscellaneous Crimes'
     crime = crime.upper()
-    if any(x in crime for x in ['VEHICLE - STOLEN', 'BURGLARY', 'THEFT', 'BUNCO', 'PICKPOCKET', 'SHOPLIFTING']):
-        return 'السرقة والسطو / Theft and Burglary'
-    elif any(x in crime for x in ['ASSAULT', 'BATTERY', 'ROBBERY', 'HOMICIDE', 'KIDNAPPING', 'STALKING', 'ABUSE']):
+    # Check fraud first (more specific conditions before general ones)
+    if any(x in crime for x in ['CREDIT CARDS', 'EMBEZZLEMENT', 'DEFRAUDING', 'FORGERY', 'IDENTITY']):
+        return 'الاحتيال والتزوير / Fraud and Forgery'
+    elif any(x in crime for x in ['ASSAULT', 'BATTERY', 'ROBBERY', 'HOMICIDE', 'KIDNAPPING', 'STALKING', 'ABUSE', 'THREATS']):
         return 'العنف والاعتداء / Violence and Assault'
     elif any(x in crime for x in ['VANDALISM', 'ARSON', 'SHOTS FIRED', 'THROWING OBJECT', 'DAMAGE', 'BOMB']):
         return 'التخريب والتدمير / Vandalism and Destruction'
-    elif any(x in crime for x in ['CREDIT CARDS', 'EMBEZZLEMENT', 'DEFRAUDING', 'FORGERY', 'IDENTITY']):
-        return 'الاحتيال والتزوير / Fraud and Forgery'
+    elif any(x in crime for x in ['VEHICLE - STOLEN', 'BURGLARY', 'THEFT', 'BUNCO', 'PICKPOCKET', 'SHOPLIFTING']):
+        return 'السرقة والسطو / Theft and Burglary'
     elif any(x in crime for x in ['COURT', 'CONTEMPT', 'VIOLATION', 'TRESPASSING', 'WEAPON', 'FIREARM']):
         return 'المخالفات القانونية والجرائم المتعلقة بالأسلحة / Legal Offences & Weapons'
     elif any(x in crime for x in ['RAPE', 'SEX', 'LEWD', 'PIMPING', 'TRAFFICKING', 'INCEST']):
@@ -233,9 +234,19 @@ def run_preprocessing_pipeline():
     
     # 6. Split
     print("Splitting data...")
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
-    )
+    # Check if stratification is possible (each class needs at least 2 samples)
+    unique_classes, class_counts = np.unique(y, return_counts=True)
+    can_stratify = np.all(class_counts >= 2)
+
+    if can_stratify:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, stratify=y, random_state=42
+        )
+    else:
+        print("Warning: Some classes have too few samples for stratification. Using regular split.")
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
     
     # 7. Scale
     if artifacts_exist:
