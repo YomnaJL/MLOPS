@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  jenkins:
+    build: .
+    container_name: jenkins-k8s
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      # Persistance des données Jenkins
+      - jenkins_home:/var/jenkins_home
+      # Connexion au Docker de votre Windows (CRUCIAL)
+      - /var/run/docker.sock:/var/run/docker.sock
+    
+    # Astuce : Sur Windows/Docker Desktop, utiliser root évite 
+    # 99% des problèmes de permission "Dial unix /var/run/docker.sock: permission denied"
+    user: root
+
+volumes:
+  jenkins_home:
