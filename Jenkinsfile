@@ -5,15 +5,15 @@ pipeline {
         DOCKER_IMAGE_NAME = 'imen835/mlops-crime'
         
         // Credentials
-        DAGSHUB_TOKEN = credentials('dagshub-token-id')
-        DOCKERHUB_CREDS = credentials('dockerhub-id')
-        ARIZE_API_KEY = credentials('arize-api-key-id')
+        DAGSHUB_TOKEN = credentials('daghub-credentials')
+        DOCKERHUB_CREDS = credentials('docker-hub-credentials')
+        //ARIZE_API_KEY = credentials('arize-api-key-id')
         
         // Configs
         DAGSHUB_USERNAME = 'YomnaJL'
         DAGSHUB_REPO_NAME = 'MLOPS_Project'
         MLFLOW_TRACKING_URI = 'https://dagshub.com/YomnaJL/MLOPS_Project.mlflow'
-        ARIZE_SPACE_ID = 'U3BhY2U6MzEyNjA6QzFTdw=='
+        //ARIZE_SPACE_ID = 'U3BhY2U6MzEyNjA6QzFTdw=='
     }
 
     stages {
@@ -42,9 +42,9 @@ pipeline {
                             "DAGSHUB_TOKEN=${DAGSHUB_TOKEN}",
                             "DAGSHUB_USERNAME=${DAGSHUB_USERNAME}",
                             "DAGSHUB_REPO_NAME=${DAGSHUB_REPO_NAME}",
-                            "MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}",
-                            "ARIZE_SPACE_ID=${ARIZE_SPACE_ID}",
-                            "ARIZE_API_KEY=${ARIZE_API_KEY}"
+                            "MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}"
+                            //"ARIZE_SPACE_ID=${ARIZE_SPACE_ID}",
+                            //"ARIZE_API_KEY=${ARIZE_API_KEY}"
                         ]) {
                             // OPTIMISATION 2 : Génération d'un rapport XML pour Jenkins
                             sh 'export PYTHONPATH=$PYTHONPATH:$(pwd)/backend/src && pytest testing/ --junitxml=test-results.xml'
