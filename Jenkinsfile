@@ -46,35 +46,39 @@ pipeline {
         stage('CI: Quality & Tests') {
             steps {
                 script {
-                    // On monte un volume pour le cache pip afin d'accélérer les installations
-                    // (Optionnel : retire 'args' si ça cause des soucis de permission sur ton serveur)
                     docker.image('python:3.9-slim').inside {
                         
-                        echo "📦 Installation des dépendances..."
-                        sh 'pip install --no-cache-dir -r backend/src/requirements-backend.txt'
-                        sh 'pip install pytest flake8 pytest-cov' 
+                        echo "📦 Création d'un environnement virtuel (pour éviter les erreurs de permission)..."
+                        // 1. Création du venv nommé 'venv'
+                        sh 'python -m venv venv'
+                        
+                        echo "⬇️ Installation des dépendances dans le venv..."
+                        // 2. On utilise le pip DU venv (./venv/bin/pip)
+                        // Note : J'ai gardé le timeout=1000 pour ta connexion internet
+                        sh './venv/bin/pip install --upgrade pip'
+                        sh './venv/bin/pip install --default-timeout=1000 --no-cache-dir -r backend/src/requirements-backend.txt'
+                        sh './venv/bin/pip install --default-timeout=1000 pytest flake8 pytest-cov' 
 
-                        echo "🔍 Analyse statique du code (Linting)..."
-                        // Vérifie la syntaxe mais ne bloque pas le build pour des erreurs mineures
-                        sh 'flake8 backend/src --count --select=E9,F63,F7,F82 --show-source --statistics || true'
+                        echo "🔍 Linting..."
+                        // 3. On utilise le flake8 DU venv
+                        sh './venv/bin/flake8 backend/src --count --select=E9,F63,F7,F82 --show-source --statistics || true'
 
-                        echo "🧪 Exécution des Tests Unitaires..."
+                        echo "🚀 Tests..."
                         withEnv([
                             "DAGSHUB_TOKEN=${DAGSHUB_TOKEN}",
                             "DAGSHUB_USERNAME=${DAGSHUB_USERNAME}",
                             "DAGSHUB_REPO_NAME=${DAGSHUB_REPO_NAME}",
                             "MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}"
                         ]) {
-                            // PYTHONPATH est crucial pour que pytest trouve les modules src
-                            // --junitxml génère le rapport pour Jenkins
-                            sh 'export PYTHONPATH=$PYTHONPATH:$(pwd)/backend/src && pytest testing/ --junitxml=test-results.xml'
+                            // 4. On lance pytest via le venv
+                            // Important : PYTHONPATH doit pointer sur ton code source
+                            sh 'export PYTHONPATH=$PYTHONPATH:$(pwd)/backend/src && ./venv/bin/pytest testing/ --junitxml=test-results.xml'
                         }
                     }
                 }
             }
             post {
                 always {
-                    // Affiche les résultats des tests dans Jenkins même si ça échoue
                     junit 'test-results.xml'
                 }
             }
