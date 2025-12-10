@@ -13,7 +13,7 @@ pipeline {
 
     environment {
         // Nom de base de l'image
-        DOCKER_IMAGE_NAME = 'imen835/mlops-crime'
+        DOCKER_IMAGE_NAME = 'yomnajl/mlops-crime'
         
         // Récupération du Hash Git court (ex: a1b2c3d) pour la traçabilité MLOps
         GIT_COMMIT_HASH = sh(returnStdout: true, script: "git rev-parse --short HEAD").trim()
