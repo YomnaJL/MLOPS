@@ -1,98 +1,126 @@
 pipeline {
     agent any
 
+    // 1. Options pour la maintenance du serveur Jenkins
+    options {
+        // Ne garde que les 10 derniers builds pour économiser de l'espace
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        // Ajoute un timestamp aux logs console
+        timestamps()
+        // Empêche deux builds de tourner en même temps sur la même branche (évite les conflits)
+        disableConcurrentBuilds()
+    }
+
     environment {
+        // Nom de base de l'image
         DOCKER_IMAGE_NAME = 'imen835/mlops-crime'
         
-        // Credentials
+        // Récupération du Hash Git court (ex: a1b2c3d) pour la traçabilité MLOps
+        GIT_COMMIT_HASH = sh(returnStdout: true, script: "git rev-parse --short HEAD").trim()
+
+        // --- Secrets ---
         DAGSHUB_TOKEN = credentials('daghub-credentials')
         DOCKERHUB_CREDS = credentials('docker-hub-credentials')
-        //ARIZE_API_KEY = credentials('arize-api-key-id')
+        // ARIZE_API_KEY = credentials('arize-api-key-id')
         
-        // Configs
+        // --- Configs MLOps ---
         DAGSHUB_USERNAME = 'YomnaJL'
         DAGSHUB_REPO_NAME = 'MLOPS_Project'
         MLFLOW_TRACKING_URI = 'https://dagshub.com/YomnaJL/MLOPS_Project.mlflow'
-        //ARIZE_SPACE_ID = 'U3BhY2U6MzEyNjA6QzFTdw=='
+        // ARIZE_SPACE_ID = 'U3BhY2U6MzEyNjA6QzFTdw=='
     }
 
     stages {
-        stage('Clean & Checkout') {
+        // Étape 1 : Préparation
+        stage('Initialize') {
             steps {
-                cleanWs()
+                cleanWs() // Nettoie le workspace avant de commencer
                 checkout scm
+                script {
+                    echo "ℹ️ Démarrage du Build #${BUILD_NUMBER} sur le commit ${GIT_COMMIT_HASH}"
+                }
             }
         }
 
-        // --- OPTIMISATION 1 : Tests & Qualité ---
-        stage('Quality & Tests') {
+        // Étape 2 : CI (Intégration Continue - Qualité & Tests)
+        stage('CI: Quality & Tests') {
             steps {
                 script {
+                    // On monte un volume pour le cache pip afin d'accélérer les installations
+                    // (Optionnel : retire 'args' si ça cause des soucis de permission sur ton serveur)
                     docker.image('python:3.9-slim').inside {
-                        sh 'pip install --no-cache-dir -r backend/src/requirements-backend.txt'
-                        // Ajout de flake8 pour la qualité du code et pytest-cov pour la couverture (optionnel)
-                        sh 'pip install pytest flake8' 
                         
-                        echo "🔍 Vérification de la qualité du code (Linting)..."
-                        // Continue même si erreurs mineures (facultatif)
+                        echo "📦 Installation des dépendances..."
+                        sh 'pip install --no-cache-dir -r backend/src/requirements-backend.txt'
+                        sh 'pip install pytest flake8 pytest-cov' 
+
+                        echo "🔍 Analyse statique du code (Linting)..."
+                        // Vérifie la syntaxe mais ne bloque pas le build pour des erreurs mineures
                         sh 'flake8 backend/src --count --select=E9,F63,F7,F82 --show-source --statistics || true'
 
-                        echo "🚀 Lancement des tests..."
+                        echo "🧪 Exécution des Tests Unitaires..."
                         withEnv([
                             "DAGSHUB_TOKEN=${DAGSHUB_TOKEN}",
                             "DAGSHUB_USERNAME=${DAGSHUB_USERNAME}",
                             "DAGSHUB_REPO_NAME=${DAGSHUB_REPO_NAME}",
                             "MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}"
-                            //"ARIZE_SPACE_ID=${ARIZE_SPACE_ID}",
-                            //"ARIZE_API_KEY=${ARIZE_API_KEY}"
                         ]) {
-                            // OPTIMISATION 2 : Génération d'un rapport XML pour Jenkins
+                            // PYTHONPATH est crucial pour que pytest trouve les modules src
+                            // --junitxml génère le rapport pour Jenkins
                             sh 'export PYTHONPATH=$PYTHONPATH:$(pwd)/backend/src && pytest testing/ --junitxml=test-results.xml'
                         }
                     }
                 }
             }
-            // Publication des résultats dans l'interface Jenkins
             post {
                 always {
+                    // Affiche les résultats des tests dans Jenkins même si ça échoue
                     junit 'test-results.xml'
                 }
             }
         }
 
-        // --- OPTIMISATION 3 : Build & Push en Parallèle ---
-        stage('Build & Push Parallel') {
-            // On se connecte une seule fois au début
+        // Étape 3 : Login Docker (Séparé pour éviter l'erreur de syntaxe parallel)
+        stage('Docker Login') {
             steps {
                 script {
-                     echo "🔓 Connexion au registre..."
-                     sh "echo $DOCKERHUB_CREDS_PSW | docker login -u $DOCKERHUB_CREDS_USR --password-stdin"
+                    echo "🔓 Connexion sécurisée au Docker Hub..."
+                    sh "echo $DOCKERHUB_CREDS_PSW | docker login -u $DOCKERHUB_CREDS_USR --password-stdin"
                 }
-                
-                parallel {
-                    stage('Backend Pipeline') {
-                        steps {
-                            script {
-                                echo "🏗️ Building Backend..."
-                                sh "docker build -t ${DOCKER_IMAGE_NAME}:backend-${BUILD_NUMBER} -t ${DOCKER_IMAGE_NAME}:backend-latest ./backend/src"
-                                
-                                echo "⬆️ Pushing Backend..."
-                                sh "docker push ${DOCKER_IMAGE_NAME}:backend-${BUILD_NUMBER}"
-                                sh "docker push ${DOCKER_IMAGE_NAME}:backend-latest"
-                            }
+            }
+        }
+
+        // Étape 4 : CD (Livraison Continue - Build & Push)
+        stage('CD: Build & Push Images') {
+            // Le bloc parallel doit être direct ici
+            parallel {
+                stage('Backend Image') {
+                    steps {
+                        script {
+                            def imageBackend = "${DOCKER_IMAGE_NAME}:backend"
+                            echo "🏗️ Construction Backend..."
+                            // On tague avec :latest, :BuildNumber, et :GitHash
+                            sh "docker build -t ${imageBackend}-${BUILD_NUMBER} -t ${imageBackend}-${GIT_COMMIT_HASH} -t ${imageBackend}-latest ./backend/src"
+                            
+                            echo "⬆️ Envoi Backend..."
+                            sh "docker push ${imageBackend}-${BUILD_NUMBER}"
+                            sh "docker push ${imageBackend}-${GIT_COMMIT_HASH}"
+                            sh "docker push ${imageBackend}-latest"
                         }
                     }
-                    
-                    stage('Frontend Pipeline') {
-                        steps {
-                            script {
-                                echo "🏗️ Building Frontend..."
-                                sh "docker build -t ${DOCKER_IMAGE_NAME}:frontend-${BUILD_NUMBER} -t ${DOCKER_IMAGE_NAME}:frontend-latest ./frontend"
-                                
-                                echo "⬆️ Pushing Frontend..."
-                                sh "docker push ${DOCKER_IMAGE_NAME}:frontend-${BUILD_NUMBER}"
-                                sh "docker push ${DOCKER_IMAGE_NAME}:frontend-latest"
-                            }
+                }
+                
+                stage('Frontend Image') {
+                    steps {
+                        script {
+                            def imageFrontend = "${DOCKER_IMAGE_NAME}:frontend"
+                            echo "🏗️ Construction Frontend..."
+                            sh "docker build -t ${imageFrontend}-${BUILD_NUMBER} -t ${imageFrontend}-${GIT_COMMIT_HASH} -t ${imageFrontend}-latest ./frontend"
+                            
+                            echo "⬆️ Envoi Frontend..."
+                            sh "docker push ${imageFrontend}-${BUILD_NUMBER}"
+                            sh "docker push ${imageFrontend}-${GIT_COMMIT_HASH}"
+                            sh "docker push ${imageFrontend}-latest"
                         }
                     }
                 }
@@ -103,19 +131,26 @@ pipeline {
     post {
         always {
             script {
-                echo "🧹 Nettoyage..."
+                echo "🧹 Nettoyage de l'environnement..."
+                // Nettoyage agressif pour éviter de saturer le disque
                 sh "docker rmi ${DOCKER_IMAGE_NAME}:backend-${BUILD_NUMBER} || true"
+                sh "docker rmi ${DOCKER_IMAGE_NAME}:backend-${GIT_COMMIT_HASH} || true"
                 sh "docker rmi ${DOCKER_IMAGE_NAME}:backend-latest || true"
+                
                 sh "docker rmi ${DOCKER_IMAGE_NAME}:frontend-${BUILD_NUMBER} || true"
+                sh "docker rmi ${DOCKER_IMAGE_NAME}:frontend-${GIT_COMMIT_HASH} || true"
                 sh "docker rmi ${DOCKER_IMAGE_NAME}:frontend-latest || true"
+                
                 sh "docker logout"
             }
         }
         success {
-            echo "✅ Succès ! Build #${BUILD_NUMBER} déployé."
+            echo "✅ Pipeline réussi !"
+            echo "🐳 Images disponibles sur DockerHub : ${DOCKER_IMAGE_NAME}"
+            echo "🔖 Commit déployé : ${GIT_COMMIT_HASH}"
         }
         failure {
-            echo "❌ Échec du pipeline."
+            echo "❌ Le pipeline a échoué. Vérifiez les logs."
         }
     }
 }
