@@ -21,7 +21,7 @@ git add .
 git commit -m "Description claire"
 
 # 4. Pousser la branche (1ère fois)
-git push origin refactor/modeling
+git push origin dev
 
 # 5. Aller sur GitHub → créer la Pull Request
 
