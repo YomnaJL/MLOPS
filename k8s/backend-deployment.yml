@@ -5,7 +5,7 @@ metadata:
   labels:
     app: backend
 spec:
-  replicas: 1 # En prod, on mettrait 2 ou 3 pour la haute disponibilité
+  replicas: 3
   selector:
     matchLabels:
       app: backend
@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: backend
-        image: imen835/mlops-crime:backend-latest
+        image: username/mlops-crime:backend-latest
         imagePullPolicy: Always
         ports:
         - containerPort: 5000

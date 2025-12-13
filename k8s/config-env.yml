@@ -3,6 +3,6 @@ kind: ConfigMap
 metadata:
   name: mlops-config
 data:
-  # L'URL interne du cluster ne change pas
+  # L'URL interne du cluster 
   API_URL: "http://backend-service:5000"
   MODEL_VERSION: "v1"

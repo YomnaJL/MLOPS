@@ -54,7 +54,7 @@ pipeline {
                         
                         echo "⬇️ Installation des dépendances dans le venv..."
                         // 2. On utilise le pip DU venv (./venv/bin/pip)
-                        // Note : J'ai gardé le timeout=1000 pour ta connexion internet
+                        
                         sh './venv/bin/pip install --upgrade pip'
                         sh './venv/bin/pip install --default-timeout=1000 --no-cache-dir -r backend/src/requirements-backend.txt'
                         sh './venv/bin/pip install --default-timeout=1000 pytest flake8 pytest-cov' 
@@ -71,7 +71,6 @@ pipeline {
                             "MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}"
                         ]) {
                             // 4. On lance pytest via le venv
-                            // Important : PYTHONPATH doit pointer sur ton code source
                             sh 'export PYTHONPATH=$PYTHONPATH:$(pwd)/backend/src && ./venv/bin/pytest testing/ --junitxml=test-results.xml'
                         }
                     }
@@ -84,7 +83,7 @@ pipeline {
             }
         }
 
-        // Étape 3 : Login Docker (Séparé pour éviter l'erreur de syntaxe parallel)
+        // Étape 3 : Login Docker 
         stage('Docker Login') {
             steps {
                 script {
@@ -96,7 +95,6 @@ pipeline {
 
         // Étape 4 : CD (Livraison Continue - Build & Push)
         stage('CD: Build & Push Images') {
-            // Le bloc parallel doit être direct ici
             parallel {
                 stage('Backend Image') {
                     steps {
