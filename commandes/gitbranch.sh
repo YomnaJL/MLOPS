@@ -14,7 +14,7 @@ git checkout main
 git pull origin main
 
 # 2. Créer et aller sur une nouvelle branche
- git checkout -b refactor/modeling
+ git checkout -b dev
 
 # 3. Travailler + committer plusieurs fois
 git add .
