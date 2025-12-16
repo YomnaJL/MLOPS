@@ -113,8 +113,8 @@ pipeline {
                     
                     // Utilisation de SED pour remplacer les PLACEHOLDERS dans les fichiers YAML
                     // On utilise '|' comme séparateur pour ne pas casser les slashs de l'image
-                    sh "sed -i 's|REPLACE_ME_BACKEND_IMAGE|${newBackendImage}|g' k8s/backend-deployment.yaml"
-                    sh "sed -i 's|REPLACE_ME_FRONTEND_IMAGE|${newFrontendImage}|g' k8s/frontend-deployment.yaml"
+                    sh "sed -i 's|REPLACE_ME_BACKEND_IMAGE|${newBackendImage}|g' k8s/backend-deployment.yml"
+                    sh "sed -i 's|REPLACE_ME_FRONTEND_IMAGE|${newFrontendImage}|g' k8s/frontend-deployment.yml"
                 }
             }
         }
@@ -124,8 +124,8 @@ pipeline {
                 script {
                     echo "🚀 Déploiement vers Kubernetes..."
                     // Application des fichiers modifiés
-                    sh "kubectl apply -f k8s/backend-deployment.yaml"
-                    sh "kubectl apply -f k8s/frontend-deployment.yaml"
+                    sh "kubectl apply -f k8s/backend-deployment.yml"
+                    sh "kubectl apply -f k8s/frontend-deployment.yml"
                 }
             }
         }
