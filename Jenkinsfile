@@ -37,7 +37,7 @@ pipeline {
                         [$class: 'CloneOption', timeout: 60, shallow: false, noTags: false]
                     ], 
                     submoduleCfg: [], 
-                    userRemoteConfigs: [[credentialsId: 'github-credentials', url: 'https://github.com/votre-repo/votre-projet.git']] // Mettez l'URL correcte si 'scm' ne marche pas
+                    userRemoteConfigs: [[credentialsId: 'github-credentials', url: 'https://github.com/YomnaJL/MLOPS.git']] // Mettez l'URL correcte si 'scm' ne marche pas
                 ])
                 
                 script {
