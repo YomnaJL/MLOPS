@@ -17,6 +17,10 @@ mlruns/
 __pycache__/
 *.pyc
 
+#jenkins Dockerfile
+
+jenkins/
+
 # Kubernetes secrets
 k8s/secrets.yml
 config.txt
