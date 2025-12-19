@@ -10,7 +10,7 @@ from sklearn.preprocessing import LabelEncoder, RobustScaler
 # CONFIGURATION
 # ==========================================
 ARTIFACTS_PATH = "processors"
-DATA_PATH = "data/crime_v1.csv" # Ensure this points to your file
+DATA_PATH = "../../data/crime_v1.csv" # Ensure this points to your file
 
 REQUIRED_ARTIFACTS = [
     "robust_scaler.pkl",
