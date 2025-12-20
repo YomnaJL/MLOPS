@@ -63,19 +63,24 @@ pipeline {
                 }
             }
         }
-
-        stage('3. Pull Data (DVC) - CML IMAGE') {
+        stage('3. Pull Data (DVC) - OPTIMIZED') {
             steps {
                 script {
-                    echo "📥 Pulling data using Official Iterative CML Image..."
+                    echo "📥 Configuration et Pull des données DVC..."
                     withCredentials([usernamePassword(credentialsId: 'daghub-credentials', usernameVariable: 'DW_USER', passwordVariable: 'DW_PASS')]) {
-                        // ✅ Utilisation de l'image CML (contenant DVC + S3 drivers)
                         docker.image('iterativeai/cml:latest').inside("-u root") {
                             withEnv(['HOME=.']) {
                                 sh """
+                                # 1. On force l'ajout du remote avec l'URL de TON projet DagsHub
+                                # On utilise -d pour le mettre par défaut et -f pour forcer s'il existe déjà
+                                dvc remote add -d -f origin https://dagshub.com/${DAGSHUB_USERNAME}/${DAGSHUB_REPO_NAME}.dvc
+                                
+                                # 2. On configure l'authentification
                                 dvc remote modify origin --local auth basic
                                 dvc remote modify origin --local user $DW_USER
                                 dvc remote modify origin --local password $DW_PASS
+                                
+                                # 3. On télécharge les données
                                 dvc pull
                                 """
                             }
