@@ -5,13 +5,12 @@ import pickle
 import warnings
 import shutil
 import mlflow
+import dagshub
 from mlflow.tracking import MlflowClient
 from dotenv import load_dotenv
 
-# =========================
-# Evidently (NEW API)
-# =========================
-from evidently import Report
+# Evidently
+from evidently.report import Report
 from evidently.metric_preset import DataDriftPreset, DataQualityPreset
 from evidently.test_suite import TestSuite
 from evidently.tests import (
@@ -28,6 +27,8 @@ load_dotenv()
 # ==========================================================
 # 1. MLFLOW / DAGSHUB CONFIG
 # ==========================================================
+REPO_OWNER = "YomnaJL"
+REPO_NAME = os.getenv("DAGSHUB_REPO_NAME", "MLOPS_Project")
 REGISTERED_MODEL_NAME = "Crime_Prediction_Model"
 
 # ==========================================================
@@ -41,32 +42,36 @@ TEST_HTML = os.path.join(MONITORING_DIR, "test_results.html")
 TRIGGER_FILE = os.path.join(MONITORING_DIR, "drift_detected")
 
 # ==========================================================
-# 3. MLFLOW AUTH (CI/CD SAFE)
+# 3. MLFLOW AUTH
 # ==========================================================
 def setup_mlflow():
-    """
-    Authentification MLflow via variables d’environnement
-    (Jenkins / CI compatible)
-    """
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
-    username = os.getenv("MLFLOW_TRACKING_USERNAME")
-    password = os.getenv("MLFLOW_TRACKING_PASSWORD")
+    """Authentification DagsHub + MLflow"""
+    username = os.getenv("DAGSHUB_USERNAME")
+    token = os.getenv("DAGSHUB_TOKEN")
 
-    if not tracking_uri or not password:
-        print("❌ Variables MLflow manquantes")
+    if not token:
+        print("❌ DAGSHUB_TOKEN manquant")
         sys.exit(1)
 
-    mlflow.set_tracking_uri(tracking_uri)
+    os.environ["MLFLOW_TRACKING_USERNAME"] = username
+    os.environ["MLFLOW_TRACKING_PASSWORD"] = token
+
+    dagshub.init(
+        repo_owner=REPO_OWNER,
+        repo_name=REPO_NAME,
+        mlflow=True
+    )
 
     print(f"✅ MLflow connecté : {mlflow.get_tracking_uri()}")
 
 # ==========================================================
-# 4. DOWNLOAD ARTEFACTS FROM REGISTRY
+# 4. DOWNLOAD ARTEFACTS FROM REGISTRY (PRODUCTION)
 # ==========================================================
 def download_reference_from_mlflow():
+    """Télécharge les artefacts du modèle en Production"""
     client = MlflowClient()
 
-    print(f"🔍 Recherche du modèle '{REGISTERED_MODEL_NAME}'")
+    print(f"🔍 Recherche du modèle '{REGISTERED_MODEL_NAME}' en Production")
 
     versions = client.get_latest_versions(
         REGISTERED_MODEL_NAME,
@@ -74,14 +79,14 @@ def download_reference_from_mlflow():
     )
 
     if not versions:
-        print("⚠️ Aucun modèle en Production, fallback dernière version")
+        print("⚠️ Aucun modèle en Production. Fallback dernière version.")
         versions = client.get_latest_versions(
             REGISTERED_MODEL_NAME,
             stages=["None"]
         )
 
     if not versions:
-        print("❌ Aucun modèle trouvé")
+        print("❌ Aucun modèle trouvé dans le Registry")
         sys.exit(1)
 
     run_id = versions[0].run_id
@@ -97,12 +102,16 @@ def download_reference_from_mlflow():
     )
 
     path = os.path.join(MONITORING_TMP_DIR, "processors")
-    return path if os.path.exists(path) else MONITORING_TMP_DIR
+    if not os.path.exists(path):
+        path = MONITORING_TMP_DIR
+
+    return path
 
 # ==========================================================
 # 5. LOAD DATA
 # ==========================================================
 def load_data(processors_path):
+    """Charge les données preprocessées"""
     data_path = os.path.join(processors_path, "preprocessed_data.pkl")
     config_path = os.path.join(processors_path, "features_config.pkl")
 
@@ -130,6 +139,8 @@ def load_data(processors_path):
 # 6. EVIDENTLY MONITORING
 # ==========================================================
 def run_evidently_analysis(reference, current):
+    """Analyse Drift + Quality Gate"""
+
     os.makedirs(MONITORING_DIR, exist_ok=True)
 
     print("📊 Analyse Evidently en cours...")
