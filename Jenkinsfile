@@ -19,6 +19,10 @@ pipeline {
         DAGSHUB_USERNAME = 'YomnaJL'
         DAGSHUB_REPO_NAME = 'MLOPS_Project'
         MLFLOW_TRACKING_URI = 'https://dagshub.com/YomnaJL/MLOPS_Project.mlflow'
+        
+        // Variable pour simplifier l'activation du venv dans les scripts
+        ACTIVATE_VENV = ". venv/bin/activate"
+        PYTHON_PATH_CMD = "export PYTHONPATH=\$PYTHONPATH:\$(pwd)/backend/src"
     }
 
     stages {
@@ -32,18 +36,18 @@ pipeline {
             }
         }
 
-        stage('2. CI: Tests Unitaires') {
+        stage('2. CI: Quality & Tests') {
             steps {
                 script {
-                    echo "🧪 Lancement des tests dans le dossier testing/..."
+                    echo "🧪 Création de l'environnement virtuel et tests..."
                     docker.image('python:3.9-slim').inside {
-                        sh 'pip install --upgrade pip'
-                        sh 'pip install -r backend/requirements-backend.txt'
-                        sh 'pip install pytest pytest-mock flake8' 
-                        
-                        // Ajout du PYTHONPATH pour trouver preprocessing2.py, feature_store.py, etc.
                         sh """
-                        export PYTHONPATH=\$PYTHONPATH:\$(pwd)/backend/src
+                        python -m venv venv
+                        ${ACTIVATE_VENV}
+                        pip install --upgrade pip
+                        pip install -r backend/requirements-backend.txt
+                        pip install pytest pytest-mock flake8
+                        ${PYTHON_PATH_CMD}
                         pytest testing/ --junitxml=test-results.xml
                         """
                     }
@@ -51,7 +55,11 @@ pipeline {
             }
             post {
                 always {
-                    junit 'test-results.xml' 
+                    script {
+                        if (fileExists('test-results.xml')) {
+                            junit 'test-results.xml'
+                        }
+                    }
                 }
             }
         }
@@ -59,13 +67,17 @@ pipeline {
         stage('3. Pull Data (DVC)') {
             steps {
                 script {
-                    echo "📥 Récupération des données via DVC..."
+                    echo "📥 Pull des données avec DVC (via venv)..."
                     withCredentials([usernamePassword(credentialsId: 'dagshub-credentials', usernameVariable: 'DW_USER', passwordVariable: 'DW_PASS')]) {
-                        docker.image('iterative/dvc').inside {
-                            sh "dvc remote modify origin --local auth basic"
-                            sh "dvc remote modify origin --local user $DW_USER"
-                            sh "dvc remote modify origin --local password $DW_PASS"
-                            sh "dvc pull"
+                        docker.image('python:3.9-slim').inside {
+                            sh """
+                            ${ACTIVATE_VENV}
+                            pip install dvc dvc-s3
+                            dvc remote modify origin --local auth basic
+                            dvc remote modify origin --local user $DW_USER
+                            dvc remote modify origin --local password $DW_PASS
+                            dvc pull
+                            """
                         }
                     }
                 }
@@ -75,15 +87,12 @@ pipeline {
         stage('4. Monitoring & Drift Detection') {
             steps {
                 script {
-                    echo "🔍 Analyse du Data Drift via monitoring/check_drift.py..."
+                    echo "🔍 Analyse du Data Drift..."
                     docker.image('python:3.9-slim').inside {
-                        sh 'pip install -r backend/requirements-backend.txt'
-                        sh 'pip install evidently'
-                        
-                        // On lance TON script de drift
-                        // S'il détecte un drift, il crée le fichier 'drift_detected'
                         sh """
-                        export PYTHONPATH=\$PYTHONPATH:\$(pwd)/backend/src
+                        ${ACTIVATE_VENV}
+                        pip install evidently
+                        ${PYTHON_PATH_CMD}
                         python monitoring/check_drift.py || touch drift_detected
                         """
                     }
@@ -97,16 +106,18 @@ pipeline {
         }
 
        stage('5. Continuous Training (CT)') {
-            // ✅ Correction ici : ajout de 'expression'
             when { 
                 expression { fileExists 'drift_detected' } 
             }
             steps {
                 script {
-                    echo "🚨 DRIFT DÉTECTÉ : Lancement du ré-entraînement via training.py..."
+                    echo "🚨 DRIFT DÉTECTÉ : Ré-entraînement..."
                     docker.image('python:3.9-slim').inside {
-                        sh 'pip install -r backend/requirements-backend.txt'
-                        sh "export PYTHONPATH=\$PYTHONPATH:\$(pwd)/backend/src && python backend/src/trainning.py"
+                        sh """
+                        ${ACTIVATE_VENV}
+                        ${PYTHON_PATH_CMD}
+                        python backend/src/trainning.py
+                        """
                     }
                 }
             }
@@ -115,16 +126,30 @@ pipeline {
         stage('6. Docker Build & Push') {
             steps {
                 script {
-                    // Login Docker Hub
-                    sh "echo \$DOCKERHUB_CREDS_PSW | docker login -u \$DOCKERHUB_CREDS_USR --password-stdin"
-                    
-                    // Backend
-                    sh "docker build -t ${DOCKER_IMAGE_NAME}:backend-${GIT_COMMIT_HASH} -t ${DOCKER_IMAGE_NAME}:backend-latest ./backend"
-                    sh "docker push ${DOCKER_IMAGE_NAME}:backend-latest"
-                    
-                    // Frontend
-                    sh "docker build -t ${DOCKER_IMAGE_NAME}:frontend-${GIT_COMMIT_HASH} -t ${DOCKER_IMAGE_NAME}:frontend-latest ./frontend"
-                    sh "docker push ${DOCKER_IMAGE_NAME}:frontend-latest"
+                    // On se connecte une seule fois avant de lancer les builds parallèles
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER')]) {
+                        sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
+                    }
+
+                    // Lancement des builds en parallèle
+                    parallel(
+                        "Build Backend": {
+                            echo "🏗️ Building & Pushing Backend..."
+                            sh """
+                            docker build -t ${DOCKER_IMAGE_NAME}:backend-${GIT_COMMIT_HASH} -t ${DOCKER_IMAGE_NAME}:backend-latest ./backend
+                            docker push ${DOCKER_IMAGE_NAME}:backend-${GIT_COMMIT_HASH}
+                            docker push ${DOCKER_IMAGE_NAME}:backend-latest
+                            """
+                        },
+                        "Build Frontend": {
+                            echo "🏗️ Building & Pushing Frontend..."
+                            sh """
+                            docker build -t ${DOCKER_IMAGE_NAME}:frontend-${GIT_COMMIT_HASH} -t ${DOCKER_IMAGE_NAME}:frontend-latest ./frontend
+                            docker push ${DOCKER_IMAGE_NAME}:frontend-${GIT_COMMIT_HASH}
+                            docker push ${DOCKER_IMAGE_NAME}:frontend-latest
+                            """
+                        }
+                    )
                 }
             }
         }
@@ -132,21 +157,20 @@ pipeline {
         stage('7. Kubernetes Deploy') {
             steps {
                 script {
-                    echo "🚀 Déploiement Kubernetes (fichiers .yml)..."
+                    echo "🚀 Déploiement K8s..."
                     def newBackend = "${DOCKER_IMAGE_NAME}:backend-latest"
                     def newFrontend = "${DOCKER_IMAGE_NAME}:frontend-latest"
                     
-                    // Mise à jour des images dans les fichiers .yml
                     sh "sed -i 's|REPLACE_ME_BACKEND_IMAGE|${newBackend}|g' k8s/backend-deployment.yml"
                     sh "sed -i 's|REPLACE_ME_FRONTEND_IMAGE|${newFrontend}|g' k8s/frontend-deployment.yml"
                     
                     withCredentials([file(credentialsId: 'kubeconfig-secret', variable: 'KUBECONFIG')]) {
-                        sh "kubectl --kubeconfig=\$KUBECONFIG apply -f k8s/mlops-config.yml"
-                        sh "kubectl --kubeconfig=\$KUBECONFIG apply -f k8s/backend-deployment.yml"
-                        sh "kubectl --kubeconfig=\$KUBECONFIG apply -f k8s/frontend-deployment.yml"
-                        
-                        // Force le redémarrage pour charger les nouveaux processeurs/modèles
-                        sh "kubectl --kubeconfig=\$KUBECONFIG rollout restart deployment/backend-deployment"
+                        sh """
+                        kubectl --kubeconfig=\$KUBECONFIG apply -f k8s/mlops-config.yml
+                        kubectl --kubeconfig=\$KUBECONFIG apply -f k8s/backend-deployment.yml
+                        kubectl --kubeconfig=\$KUBECONFIG apply -f k8s/frontend-deployment.yml
+                        kubectl --kubeconfig=\$KUBECONFIG rollout restart deployment/backend-deployment
+                        """
                     }
                 }
             }
@@ -155,12 +179,12 @@ pipeline {
     
     post {
         always {
-            // Nettoyage final du workspace
-            sh "rm drift_detected || true"
+            // On nettoie le venv et les fichiers temporaires pour garder le serveur propre
+            sh "rm -rf venv drift_detected || true"
             sh "docker logout || true"
         }
         success {
-            echo "✨ Pipeline MLOps terminé avec succès !"
+            echo "✨ Pipeline MLOps terminé avec succès (Mode Virtualenv) !"
         }
     }
 }
