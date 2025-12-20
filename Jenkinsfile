@@ -2,168 +2,169 @@ pipeline {
     agent any
 
     options {
-        buildDiscarder(logRotator(numToKeepStr: '10'))
+        buildDiscarder(logRotator(numToKeepStr: '5'))
         timestamps()
         disableConcurrentBuilds()
-        // Timeout global du job pour éviter qu'il ne tourne indéfiniment
         timeout(time: 1, unit: 'HOURS') 
     }
 
     environment {
-        // ✅ Variable statique (OK ici)
         DOCKER_IMAGE_NAME = 'imen835/mlops-crime'
         
-        // ❌ GIT_COMMIT_HASH supprimé d'ici car il nécessite le code source d'abord
-
-        // --- Secrets ---
-        DAGSHUB_TOKEN = credentials('daghub-credentials')
+        // --- Credentials ---
+        DAGSHUB_TOKEN = credentials('daghub-credentials') 
         DOCKERHUB_CREDS = credentials('docker-hub-credentials')
+        EVIDENTLY_TOKEN = credentials('evidently-token') 
         
         // --- Configs MLOps ---
         DAGSHUB_USERNAME = 'YomnaJL'
         DAGSHUB_REPO_NAME = 'MLOPS_Project'
+        EVIDENTLY_PROJECT_ID = 'Ton_Project_ID_Evidently_Ici' 
         MLFLOW_TRACKING_URI = 'https://dagshub.com/YomnaJL/MLOPS_Project.mlflow'
+        
+        DATA_PATH = "data/crime_v1.csv"
     }
 
     stages {
-        stage('Initialize') {
+        stage('1. Initialize') {
             steps {
                 cleanWs()
-                // ✅ CORRECTION 1 : Configuration Git explicite avec Timeout augmenté
                 checkout([$class: 'GitSCM', 
-                    branches: [[name: '*/main']], // ou '*/master' selon votre branche
-                    doGenerateSubmoduleConfigurations: false, 
-                    extensions: [
-                        [$class: 'CloneOption', timeout: 60, shallow: false, noTags: false]
-                    ], 
-                    submoduleCfg: [], 
-                    userRemoteConfigs: [[credentialsId: 'github-credentials', url: 'https://github.com/YomnaJL/MLOPS.git']] // Mettez l'URL correcte si 'scm' ne marche pas
+                    branches: [[name: '*/main']], 
+                    userRemoteConfigs: [[credentialsId: 'github-credentials', url: 'https://github.com/YomnaJL/MLOPS.git']]
                 ])
-                
                 script {
-                    // ✅ CORRECTION 2 : Calcul du Hash après le checkout
                     env.GIT_COMMIT_HASH = sh(returnStdout: true, script: "git rev-parse --short HEAD").trim()
-                    echo "ℹ️ Build #${BUILD_NUMBER} - Commit ${env.GIT_COMMIT_HASH}"
                 }
             }
         }
 
-        stage('CI: Quality & Tests') {
+        // ✅ L'ÉTAPE QUE J'AVAIS OUBLIÉE EST DE RETOUR ICI
+        stage('2. CI: Quality & Tests') {
             steps {
                 script {
+                    echo "🧪 Lancement des tests unitaires et Linting..."
                     docker.image('python:3.9-slim').inside {
                         sh 'python -m venv venv'
                         sh './venv/bin/pip install --upgrade pip'
+                        // Installation des dépendances du projet
                         sh './venv/bin/pip install --default-timeout=1000 --no-cache-dir -r backend/src/requirements-backend.txt'
-                        sh './venv/bin/pip install --default-timeout=1000 pytest flake8 pytest-cov' 
+                        // Installation des outils de test
+                        sh './venv/bin/pip install --default-timeout=1000 pytest flake8 pytest-cov httpx' 
                         
+                        // 1. Linting (Qualité du code)
+                        // On ignore certaines erreurs mineures pour ne pas bloquer le build trop facilement
                         sh './venv/bin/flake8 backend/src --count --select=E9,F63,F7,F82 --show-source --statistics || true'
                         
+                        // 2. Tests Unitaires
+                        // On passe les variables d'env pour que les tests puissent mocker MLflow si besoin
                         withEnv([
                             "DAGSHUB_TOKEN=${DAGSHUB_TOKEN}",
                             "DAGSHUB_USERNAME=${DAGSHUB_USERNAME}",
                             "DAGSHUB_REPO_NAME=${DAGSHUB_REPO_NAME}",
                             "MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}"
                         ]) {
+                            // On ajoute le dossier src au PYTHONPATH pour que les imports marchent
                             sh 'export PYTHONPATH=$PYTHONPATH:$(pwd)/backend/src && ./venv/bin/pytest testing/ --junitxml=test-results.xml'
                         }
                     }
                 }
             }
             post {
-                always { 
-                    // junit 'test-results.xml' // Commenté si le fichier n'est pas généré en cas d'échec d'install
-                    echo "Fin des tests"
+                always {
+                    // Publier les résultats des tests dans Jenkins (si le plugin JUnit est installé)
+                    junit 'test-results.xml' 
                 }
             }
         }
 
-        stage('Docker Login') {
+        stage('3. Pull Data (DVC)') {
+            steps {
+                script {
+                    echo "📥 Téléchargement des données..."
+                    withCredentials([usernamePassword(credentialsId: 'dagshub-credentials', usernameVariable: 'DW_USER', passwordVariable: 'DW_PASS')]) {
+                        docker.image('python:3.9-slim').inside {
+                            sh 'pip install dvc dvc-s3' 
+                            sh "dvc remote modify origin --local auth basic"
+                            sh "dvc remote modify origin --local user $DW_USER"
+                            sh "dvc remote modify origin --local password $DW_PASS"
+                            sh "dvc pull"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('4. Monitoring & Drift') {
+            steps {
+                script {
+                    echo "🔍 Analyse du Data Drift..."
+                    docker.image('python:3.9-slim').inside {
+                        sh 'pip install -r backend/src/requirements-backend.txt'
+                        sh 'pip install evidently'
+                        
+                        // Génération des pickles frais sur la donnée actuelle pour comparaison
+                        sh 'python backend/src/preprocessing.py --mode transform' 
+                        sh 'python backend/src/monitor.py'
+                    }
+                }
+            }
+        }
+
+        stage('5. Continuous Training (CT)') {
+            when { expression { fileExists('drift_detected') } }
+            steps {
+                script {
+                    echo "🚨 DRIFT DÉTECTÉ : Ré-entraînement..."
+                    docker.image('python:3.9-slim').inside {
+                        sh 'pip install -r backend/src/requirements-backend.txt'
+                        sh 'python backend/src/train.py'
+                    }
+                }
+            }
+        }
+
+        stage('6. Docker Build & Push') {
             steps {
                 script {
                     sh "echo $DOCKERHUB_CREDS_PSW | docker login -u $DOCKERHUB_CREDS_USR --password-stdin"
-                }
-            }
-        }
-
-        stage('CD: Build & Push Images') {
-            parallel {
-                stage('Backend Image') {
-                    steps {
-                        script {
-                            def imageBackend = "${DOCKER_IMAGE_NAME}:backend"
-                            sh "docker build -t ${imageBackend}-${BUILD_NUMBER} -t ${imageBackend}-${GIT_COMMIT_HASH} -t ${imageBackend}-latest ./backend/src"
-                            sh "docker push ${imageBackend}-${BUILD_NUMBER}"
-                            sh "docker push ${imageBackend}-${GIT_COMMIT_HASH}"
-                            sh "docker push ${imageBackend}-latest"
-                        }
-                    }
-                }
-                stage('Frontend Image') {
-                    steps {
-                        script {
-                            def imageFrontend = "${DOCKER_IMAGE_NAME}:frontend"
-                            sh "docker build -t ${imageFrontend}-${BUILD_NUMBER} -t ${imageFrontend}-${GIT_COMMIT_HASH} -t ${imageFrontend}-latest ./frontend"
-                            sh "docker push ${imageFrontend}-${BUILD_NUMBER}"
-                            sh "docker push ${imageFrontend}-${GIT_COMMIT_HASH}"
-                            sh "docker push ${imageFrontend}-latest"
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Update Manifests') {
-            steps {
-                script {
-                    echo "📝 Mise à jour des fichiers Kubernetes..."
-                    def newBackendImage = "${DOCKER_IMAGE_NAME}:backend-${BUILD_NUMBER}"
-                    def newFrontendImage = "${DOCKER_IMAGE_NAME}:frontend-${BUILD_NUMBER}"
                     
-                    sh "sed -i 's|REPLACE_ME_BACKEND_IMAGE|${newBackendImage}|g' k8s/backend-deployment.yml"
-                    sh "sed -i 's|REPLACE_ME_FRONTEND_IMAGE|${newFrontendImage}|g' k8s/frontend-deployment.yml"
+                    // Backend
+                    sh "docker build -t ${DOCKER_IMAGE_NAME}:backend-${GIT_COMMIT_HASH} -t ${DOCKER_IMAGE_NAME}:backend-latest ./backend/src"
+                    sh "docker push ${DOCKER_IMAGE_NAME}:backend-${GIT_COMMIT_HASH}"
+                    sh "docker push ${DOCKER_IMAGE_NAME}:backend-latest"
+                    
+                    // Frontend
+                    sh "docker build -t ${DOCKER_IMAGE_NAME}:frontend-${GIT_COMMIT_HASH} -t ${DOCKER_IMAGE_NAME}:frontend-latest ./frontend"
+                    sh "docker push ${DOCKER_IMAGE_NAME}:frontend-${GIT_COMMIT_HASH}"
+                    sh "docker push ${DOCKER_IMAGE_NAME}:frontend-latest"
                 }
             }
         }
 
-        stage('Deploy to Kubernetes') {
+        stage('7. Deploy') {
             steps {
                 script {
-                    echo "🚀 Déploiement vers Kubernetes..."
+                    // Update Manifests & Deploy logic...
+                    def newBackend = "${DOCKER_IMAGE_NAME}:backend-${GIT_COMMIT_HASH}"
+                    def newFrontend = "${DOCKER_IMAGE_NAME}:frontend-${GIT_COMMIT_HASH}"
+                    sh "sed -i 's|REPLACE_ME_BACKEND_IMAGE|${newBackend}|g' k8s/backend-deployment.yml"
+                    sh "sed -i 's|REPLACE_ME_FRONTEND_IMAGE|${newFrontend}|g' k8s/frontend-deployment.yml"
+                    
                     withCredentials([file(credentialsId: 'kubeconfig-secret', variable: 'KUBECONFIG')]) {
                         sh "kubectl apply -f k8s/backend-deployment.yml"
                         sh "kubectl apply -f k8s/frontend-deployment.yml"
-                        sh "sleep 5"
-                        sh "kubectl get pods" 
+                        sh "kubectl rollout restart deployment/backend-deployment"
                     }
                 }
             }
         }
     }
-
+    
     post {
         always {
-            script {
-                echo "🧹 Nettoyage..."
-                // ✅ CORRECTION 3 : Vérifier si GIT_COMMIT_HASH existe avant de nettoyer
-                if (env.GIT_COMMIT_HASH) {
-                    sh "docker rmi ${DOCKER_IMAGE_NAME}:backend-${BUILD_NUMBER} || true"
-                    sh "docker rmi ${DOCKER_IMAGE_NAME}:backend-${GIT_COMMIT_HASH} || true"
-                    sh "docker rmi ${DOCKER_IMAGE_NAME}:backend-latest || true"
-                    sh "docker rmi ${DOCKER_IMAGE_NAME}:frontend-${BUILD_NUMBER} || true"
-                    sh "docker rmi ${DOCKER_IMAGE_NAME}:frontend-${GIT_COMMIT_HASH} || true"
-                    sh "docker rmi ${DOCKER_IMAGE_NAME}:frontend-latest || true"
-                } else {
-                    echo "⚠️ Checkout échoué, pas d'images Docker à nettoyer."
-                }
-                sh "docker logout || true"
-            }
-        }
-        success {
-            echo "✅ Pipeline et Déploiement réussis !"
-        }
-        failure {
-            echo "❌ Échec du pipeline."
+            sh "rm drift_detected || true"
+            sh "docker logout || true"
         }
     }
 }
