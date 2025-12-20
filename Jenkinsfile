@@ -11,11 +11,10 @@ pipeline {
     environment {
         DOCKER_IMAGE_NAME = 'imen835/mlops-crime'
         DAGSHUB_TOKEN = credentials('daghub-credentials') 
-        // Utilisation de l'ID correct pour Docker Hub
         DOCKERHUB_CREDS = credentials('docker-hub-credentials')
         DAGSHUB_USERNAME = 'YomnaJL'
         DAGSHUB_REPO_NAME = 'MLOPS_Project'
-        MLFLOW_TRACKING_URI = 'https://dagshub.com/YomnaJL/MLOPS_Project.mlflow'
+        MLFLOW_TRACKING_URI = "https://dagshub.com/${DAGSHUB_USERNAME}/${DAGSHUB_REPO_NAME}.mlflow"
         
         ACTIVATE_VENV = ". venv/bin/activate"
         PYTHON_PATH_CMD = "export PYTHONPATH=\$PYTHONPATH:\$(pwd)/backend/src"
@@ -29,8 +28,7 @@ pipeline {
                 script {
                     env.GIT_COMMIT_HASH = sh(returnStdout: true, script: "git rev-parse --short HEAD").trim()
                     
-                    // ✅ LOGIN DOCKER ICI (Avant les pulls d'images)
-                    // On utilise les variables générées par credentials('docker-hub-credentials')
+                    // ✅ Docker Login validé au démarrage
                     withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER')]) {
                         sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
                     }
@@ -66,19 +64,21 @@ pipeline {
             }
         }
 
-        stage('3. Pull Data (DVC) - OPTIMIZED') {
+        stage('3. Pull Data (DVC) - CML IMAGE') {
             steps {
                 script {
-                    echo "📥 Pulling data using Official DVC Image..."
+                    echo "📥 Pulling data using Official Iterative CML Image..."
                     withCredentials([usernamePassword(credentialsId: 'daghub-credentials', usernameVariable: 'DW_USER', passwordVariable: 'DW_PASS')]) {
-                        // Maintenant le pull ne sera plus rejeté car on est authentifié
-                        docker.image('iterative/dvc:latest-s3').inside("-u root") {
-                            sh """
-                            dvc remote modify origin --local auth basic
-                            dvc remote modify origin --local user $DW_USER
-                            dvc remote modify origin --local password $DW_PASS
-                            dvc pull
-                            """
+                        // ✅ Utilisation de l'image CML (contenant DVC + S3 drivers)
+                        docker.image('iterativeai/cml:latest').inside("-u root") {
+                            withEnv(['HOME=.']) {
+                                sh """
+                                dvc remote modify origin --local auth basic
+                                dvc remote modify origin --local user $DW_USER
+                                dvc remote modify origin --local password $DW_PASS
+                                dvc pull
+                                """
+                            }
                         }
                     }
                 }
@@ -128,10 +128,15 @@ pipeline {
         stage('6. Docker Build & Push (Parallel)') {
             steps {
                 script {
-                    // On est déjà loggé grâce au Stage 1 !
                     parallel(
-                        "Backend": { sh "docker build -t ${DOCKER_IMAGE_NAME}:backend-latest ./backend && docker push ${DOCKER_IMAGE_NAME}:backend-latest" },
-                        "Frontend": { sh "docker build -t ${DOCKER_IMAGE_NAME}:frontend-latest ./frontend && docker push ${DOCKER_IMAGE_NAME}:frontend-latest" }
+                        "Backend": { 
+                            sh "docker build -t ${DOCKER_IMAGE_NAME}:backend-latest ./backend"
+                            sh "docker push ${DOCKER_IMAGE_NAME}:backend-latest" 
+                        },
+                        "Frontend": { 
+                            sh "docker build -t ${DOCKER_IMAGE_NAME}:frontend-latest ./frontend"
+                            sh "docker push ${DOCKER_IMAGE_NAME}:frontend-latest" 
+                        }
                     )
                 }
             }
@@ -140,9 +145,12 @@ pipeline {
         stage('7. Kubernetes Deploy') {
             steps {
                 script {
-                    echo "🚀 Déploiement K8s..."
-                    sh "sed -i 's|REPLACE_ME_BACKEND_IMAGE|${DOCKER_IMAGE_NAME}:backend-latest|g' k8s/backend-deployment.yml"
-                    sh "sed -i 's|REPLACE_ME_FRONTEND_IMAGE|${DOCKER_IMAGE_NAME}:frontend-latest|g' k8s/frontend-deployment.yml"
+                    echo "🚀 Déploiement K8s (.yml)..."
+                    def newBackend = "${DOCKER_IMAGE_NAME}:backend-latest"
+                    def newFrontend = "${DOCKER_IMAGE_NAME}:frontend-latest"
+                    
+                    sh "sed -i 's|REPLACE_ME_BACKEND_IMAGE|${newBackend}|g' k8s/backend-deployment.yml"
+                    sh "sed -i 's|REPLACE_ME_FRONTEND_IMAGE|${newFrontend}|g' k8s/frontend-deployment.yml"
                     
                     withCredentials([file(credentialsId: 'kubeconfig-secret', variable: 'KUBECONFIG')]) {
                         sh """
