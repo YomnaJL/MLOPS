@@ -37,16 +37,16 @@ pipeline {
             returnStdout: true,
             script: "git rev-parse --short HEAD"
           ).trim()
-        }
 
-        withCredentials([
-          usernamePassword(
-            credentialsId: 'docker-hub-credentials',
-            usernameVariable: 'DOCKER_USER',
-            passwordVariable: 'DOCKER_PASS'
-          )
-        ]) {
-          sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
+          withCredentials([
+            usernamePassword(
+              credentialsId: 'docker-hub-credentials',
+              usernameVariable: 'DOCKER_USER',
+              passwordVariable: 'DOCKER_PASS'
+            )
+          ]) {
+            sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
+          }
         }
       }
     }
@@ -73,20 +73,22 @@ pipeline {
     }
 
     /* ===================================================== */
-    stage('3. Tests (Unit & Integration)') {
+    stage('3. Tests') {
       steps {
-        docker.image('python:3.9-slim').inside("-u root") {
-          withEnv(['HOME=.']) {
-            sh """
-              apt-get update && apt-get install -y libgomp1
-              python -m venv venv
-              ${ACTIVATE_VENV}
-              pip install --upgrade pip
-              pip install -r backend/src/requirements-backend.txt
-              pip install pytest pytest-mock flake8
-              ${PYTHON_PATH_CMD}
-              pytest testing/ --junitxml=test-results.xml
-            """
+        script {
+          docker.image('python:3.9-slim').inside("-u root") {
+            withEnv(['HOME=.']) {
+              sh """
+                apt-get update && apt-get install -y libgomp1
+                python -m venv venv
+                ${ACTIVATE_VENV}
+                pip install --upgrade pip
+                pip install -r backend/src/requirements-backend.txt
+                pip install pytest pytest-mock flake8
+                ${PYTHON_PATH_CMD}
+                pytest testing/ --junitxml=test-results.xml
+              """
+            }
           }
         }
       }
@@ -95,18 +97,20 @@ pipeline {
     /* ===================================================== */
     stage('4. Monitoring (Evidently)') {
       steps {
-        docker.image('python:3.9-slim').inside("-u root") {
-          withEnv(['HOME=.']) {
-            sh """
-              ${ACTIVATE_VENV}
-              pip install evidently
+        script {
+          docker.image('python:3.9-slim').inside("-u root") {
+            withEnv(['HOME=.']) {
+              sh """
+                ${ACTIVATE_VENV}
+                pip install evidently
 
-              export MLFLOW_TRACKING_USERNAME=${DAGSHUB_AUTH_USR}
-              export MLFLOW_TRACKING_PASSWORD=${DAGSHUB_AUTH_PSW}
+                export MLFLOW_TRACKING_USERNAME=${DAGSHUB_AUTH_USR}
+                export MLFLOW_TRACKING_PASSWORD=${DAGSHUB_AUTH_PSW}
 
-              ${PYTHON_PATH_CMD}
-              python monitoring/check_drift.py || touch monitoring/drift_detected
-            """
+                ${PYTHON_PATH_CMD}
+                python monitoring/check_drift.py || touch monitoring/drift_detected
+              """
+            }
           }
         }
       }
@@ -118,17 +122,19 @@ pipeline {
         expression { fileExists('monitoring/drift_detected') }
       }
       steps {
-        docker.image('python:3.9-slim').inside("-u root") {
-          withEnv(['HOME=.']) {
-            sh """
-              ${ACTIVATE_VENV}
+        script {
+          docker.image('python:3.9-slim').inside("-u root") {
+            withEnv(['HOME=.']) {
+              sh """
+                ${ACTIVATE_VENV}
 
-              export MLFLOW_TRACKING_USERNAME=${DAGSHUB_AUTH_USR}
-              export MLFLOW_TRACKING_PASSWORD=${DAGSHUB_AUTH_PSW}
+                export MLFLOW_TRACKING_USERNAME=${DAGSHUB_AUTH_USR}
+                export MLFLOW_TRACKING_PASSWORD=${DAGSHUB_AUTH_PSW}
 
-              ${PYTHON_PATH_CMD}
-              python backend/src/trainning.py
-            """
+                ${PYTHON_PATH_CMD}
+                python backend/src/trainning.py
+              """
+            }
           }
         }
       }
@@ -155,24 +161,25 @@ pipeline {
     /* ===================================================== */
     stage('7. Kubernetes Deploy') {
       steps {
-        withCredentials([
-          file(credentialsId: 'kubeconfig-secret', variable: 'KUBECONFIG')
-        ]) {
-          sh """
-            sed -i 's|REPLACE_ME_BACKEND_IMAGE|${DOCKER_IMAGE_NAME}:backend-latest|g' k8s/backend-deployment.yml
-            sed -i 's|REPLACE_ME_FRONTEND_IMAGE|${DOCKER_IMAGE_NAME}:frontend-latest|g' k8s/frontend-deployment.yml
+        script {
+          withCredentials([
+            file(credentialsId: 'kubeconfig-secret', variable: 'KUBECONFIG')
+          ]) {
+            sh """
+              sed -i 's|REPLACE_ME_BACKEND_IMAGE|${DOCKER_IMAGE_NAME}:backend-latest|g' k8s/backend-deployment.yml
+              sed -i 's|REPLACE_ME_FRONTEND_IMAGE|${DOCKER_IMAGE_NAME}:frontend-latest|g' k8s/frontend-deployment.yml
 
-            kubectl --kubeconfig=\$KUBECONFIG apply -f k8s/config-env.yml
-            kubectl --kubeconfig=\$KUBECONFIG apply -f k8s/backend-deployment.yml
-            kubectl --kubeconfig=\$KUBECONFIG apply -f k8s/frontend-deployment.yml
-            kubectl --kubeconfig=\$KUBECONFIG rollout restart deployment/backend-deployment
-          """
+              kubectl --kubeconfig=\$KUBECONFIG apply -f k8s/config-env.yml
+              kubectl --kubeconfig=\$KUBECONFIG apply -f k8s/backend-deployment.yml
+              kubectl --kubeconfig=\$KUBECONFIG apply -f k8s/frontend-deployment.yml
+              kubectl --kubeconfig=\$KUBECONFIG rollout restart deployment/backend-deployment
+            """
+          }
         }
       }
     }
   }
 
-  /* ===================================================== */
   post {
     always {
       script {
