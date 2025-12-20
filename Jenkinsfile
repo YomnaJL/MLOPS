@@ -66,30 +66,27 @@ pipeline {
         stage('3. Pull Data (DVC) - OPTIMIZED') {
             steps {
                 script {
-                    echo "📥 Nettoyage et Configuration DVC..."
-                    // On définit l'URL ici pour plus de clarté
+                    echo "📥 Configuration et Pull des données DVC..."
+                    // On définit l'URL ici : c'est ta source de vérité
                     def dagshubUrl = "https://dagshub.com/${DAGSHUB_USERNAME}/${DAGSHUB_REPO_NAME}.dvc"
                     
                     withCredentials([usernamePassword(credentialsId: 'daghub-credentials', usernameVariable: 'DW_USER', passwordVariable: 'DW_PASS')]) {
                         docker.image('iterativeai/cml:latest').inside("-u root") {
                             withEnv(['HOME=.']) {
                                 sh """
-                                # 1. Supprimer toute configuration existante pour repartir à neuf
-                                dvc remote remove origin --local || true
-                                dvc remote remove origin || true
+                                # 1. On force l'ajout/mise à jour du remote 'origin' avec la bonne URL
+                                # Le -f (force) permet d'écraser l'URL si elle existe déjà
+                                dvc remote add -d -f origin ${dagshubUrl}
 
-                                # 2. Ajouter le remote DagsHub de manière explicite
-                                dvc remote add -d origin ${dagshubUrl}
-
-                                # 3. Configurer l'authentification (Utiliser \$ pour les variables d'env shell)
+                                # 2. On configure l'authentification en LOCAL (pour ne pas polluer le repo)
                                 dvc remote modify origin --local auth basic
                                 dvc remote modify origin --local user \$DW_USER
                                 dvc remote modify origin --local password \$DW_PASS
 
-                                # 4. Vérification : Afficher la config pour débugger en cas d'échec
+                                # 3. Vérification visuelle dans les logs Jenkins
                                 dvc remote list
 
-                                # 5. Pull des données
+                                # 4. Téléchargement des données (Mode verbeux pour voir la progression)
                                 dvc pull -v
                                 """
                             }
