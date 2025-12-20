@@ -11,6 +11,7 @@ pipeline {
     environment {
         DOCKER_IMAGE_NAME = 'imen835/mlops-crime'
         DAGSHUB_TOKEN = credentials('daghub-credentials') 
+        // Utilisation de l'ID correct pour Docker Hub
         DOCKERHUB_CREDS = credentials('docker-hub-credentials')
         DAGSHUB_USERNAME = 'YomnaJL'
         DAGSHUB_REPO_NAME = 'MLOPS_Project'
@@ -21,12 +22,18 @@ pipeline {
     }
 
     stages {
-        stage('1. Initialize') {
+        stage('1. Initialize & Docker Login') {
             steps {
                 cleanWs()
                 checkout scm
                 script {
                     env.GIT_COMMIT_HASH = sh(returnStdout: true, script: "git rev-parse --short HEAD").trim()
+                    
+                    // ✅ LOGIN DOCKER ICI (Avant les pulls d'images)
+                    // On utilise les variables générées par credentials('docker-hub-credentials')
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER')]) {
+                        sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
+                    }
                 }
             }
         }
@@ -62,9 +69,9 @@ pipeline {
         stage('3. Pull Data (DVC) - OPTIMIZED') {
             steps {
                 script {
-                    echo "📥 Pulling data using Official DVC Image (Fast)..."
+                    echo "📥 Pulling data using Official DVC Image..."
                     withCredentials([usernamePassword(credentialsId: 'daghub-credentials', usernameVariable: 'DW_USER', passwordVariable: 'DW_PASS')]) {
-                        // Utilisation de l'image officielle pour éviter l'installation interminable de pip
+                        // Maintenant le pull ne sera plus rejeté car on est authentifié
                         docker.image('iterative/dvc:latest-s3').inside("-u root") {
                             sh """
                             dvc remote modify origin --local auth basic
@@ -121,9 +128,7 @@ pipeline {
         stage('6. Docker Build & Push (Parallel)') {
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', passwordVariable: 'DOCKER_PASS', usernameVariable: 'DOCKER_USER')]) {
-                        sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
-                    }
+                    // On est déjà loggé grâce au Stage 1 !
                     parallel(
                         "Backend": { sh "docker build -t ${DOCKER_IMAGE_NAME}:backend-latest ./backend && docker push ${DOCKER_IMAGE_NAME}:backend-latest" },
                         "Frontend": { sh "docker build -t ${DOCKER_IMAGE_NAME}:frontend-latest ./frontend && docker push ${DOCKER_IMAGE_NAME}:frontend-latest" }
