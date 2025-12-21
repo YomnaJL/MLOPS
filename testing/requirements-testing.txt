@@ -1,6 +1,35 @@
+# ==============================
+# TESTING REQUIREMENTS (minimal)
+# ==============================
+
+# Testing frameworks
 pytest>=7.0
 pytest-mock>=3.10
 flake8>=6.0
+unittest2>=1.1.0
+
+# Data & ML utils (pour tests et manipulations)
 pandas>=2.0
 numpy>=1.24
 scikit-learn>=1.2
+pickle5>=0.0.12
+
+# MLflow pour tests qui l'utilisent
+mlflow>=2.0,<3.0
+
+# Environnement & configuration
+python-dotenv>=1.0
+
+# Pour tests HTTP / API
+requests>=2.30
+
+# Pour deepchecks si utilisé dans tests
+deepchecks>=0.13.0
+
+# Utilitaires
+shutil
+os
+sys
+time
+json
+traceback
