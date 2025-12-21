@@ -10,7 +10,7 @@ unittest2>=1.1.0
 
 # Data & ML utils (pour tests et manipulations)
 pandas>=2.0
-numpy>=1.24
+numpy<2.0        # Fix pour compatibilité Deepchecks / np.Inf
 scikit-learn>=1.2
 
 # MLflow pour tests qui l'utilisent
