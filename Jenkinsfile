@@ -90,31 +90,40 @@ pipeline {
       }
     }
 
-    /* ===================================================== */
+/* ===================================================== */
     stage('4. Monitoring (Evidently)') {
       steps {
         script {
           docker.image('python:3.9-slim').inside("-u root") {
-            withEnv(['HOME=.']) {
+            withCredentials([usernamePassword(credentialsId: 'daghub-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
               sh """
+                # 1. Installation des dépendances système (Indispensable pour Evidently/Numba)
+                apt-get update && apt-get install -y build-essential libgomp1
+                
+                # 2. Préparation de l'environnement virtuel
                 python -m venv venv
-                ${ACTIVATE_VENV}
+                . venv/bin/activate
                 pip install --upgrade pip
+                
+                # 3. Installation des requirements (Vérifie bien ton fichier requirements-monitoring.txt)
                 pip install -r monitoring/requirements-monitoring.txt
+                
+                # 4. Configuration des variables d'environnement
                 ${PYTHON_PATH_CMD}
+                export MLFLOW_TRACKING_USERNAME=${USER}
+                export MLFLOW_TRACKING_PASSWORD=${PASS}
+                export MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
+                
+                # 5. Exécution du script de monitoring
+                # Si le script échoue (drift détecté), on crée le fichier trigger
+                python monitoring/check_drift.py || touch monitoring/drift_detected
               """
-              withEnv([
-                "MLFLOW_TRACKING_USERNAME=${DAGSHUB_AUTH_USR}",
-                "MLFLOW_TRACKING_PASSWORD=${DAGSHUB_AUTH_PSW}"
-              ]) {
-                sh "python monitoring/check_drift.py || touch monitoring/drift_detected"
-              }
             }
           }
         }
       }
     }
-
+    
     /* ===================================================== */
     stage('5. Conditional Retraining') {
       when {
