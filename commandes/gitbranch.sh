@@ -5,7 +5,7 @@ git fetch origin
 git branch -a
 
 #se met sur la branch
-git checkout modeling
+git checkout dev
 #puller 
 git pull
 
@@ -36,5 +36,4 @@ git branch -d feature/nouvelle-fonctionnalite
     # Revenir sur main d’abord (obligatoire)
     git checkout main
 
-    # Supprimer la branche locale mal orthographiée
-    git branch -D feature/modeling        # suppression « douce » (refuse si pas mergée)
+ 
