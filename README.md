@@ -50,125 +50,106 @@
 ### 🎯 Architecture MLOps Complète - CrimeGuard Platform
 
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'fontSize':'14px'}}}%%
 graph LR
-    %% ============================================
+    %% ACTORS
+    DEV["👨‍💻<br/>Developer"]
+    USER["👥<br/>Users"]
+    
     %% DATA LAYER
-    %% ============================================
-    subgraph DATA["📊 DATA LAYER"]
-        direction TB
-        D1[("🗄️ DagsHub<br/>Remote Storage<br/>DVC")]
-        D2["📁 Crime Dataset<br/>v1.csv<br/>800K rows"]
-        D3["🔖 Data Versioning<br/>.dvc files"]
-        D1 -->|Store & Version| D2
-        D2 --> D3
+    subgraph DATA["📊 DATA"]
+        DVC["🔖 DVC"]
+        DAGS["🗄️ DagsHub"]
     end
-
-    %% ============================================
-    %% CI/CD PIPELINE
-    %% ============================================
-    subgraph CICD["🔄 JENKINS CI/CD PIPELINE"]
-        direction TB
-        J1["🚀 Stage 1<br/>Init & Docker Login"]
-        J2["📥 Stage 2<br/>DVC Pull Data"]
-        J3["🧪 Stage 3<br/>Unit Tests<br/>Pytest"]
-        J4["📊 Stage 4<br/>Monitoring<br/>Evidently AI"]
-        J5{"⚠️ Drift<br/>Detected?"}
-        J6["🎯 Stage 5<br/>Retraining<br/>MLflow"]
-        J7["🐳 Stage 6<br/>Docker Build<br/>Backend/Frontend"]
-        J8["☸️ Stage 7<br/>K8s Deploy<br/>Rolling Update"]
-        
-        J1 --> J2 --> J3 --> J4 --> J5
-        J5 -->|"✅ Yes"| J6
-        J5 -->|"❌ No"| J7
-        J6 --> J7 --> J8
+    
+    %% CI/CD STAGES
+    subgraph CICD["🔄 JENKINS PIPELINE"]
+        S1["🚀<br/>Init"]
+        S2["📥<br/>Pull Data"]
+        S3["🧪<br/>Tests"]
+        S4["📊<br/>Drift Check"]
+        S5{"⚠️<br/>Drift?"}
+        S6["🎯<br/>Retrain"]
+        S7["🐳<br/>Build"]
+        S8["☸️<br/>Deploy"]
     end
-
-    %% ============================================
-    %% ML TRAINING PIPELINE
-    %% ============================================
-    subgraph ML["🤖 ML TRAINING PIPELINE"]
-        direction TB
-        M1["🔧 Feature Engineering<br/>28 features"]
-        M2["📈 MLflow Tracking<br/>Experiments"]
-        M3["🎯 Model Training<br/>XGBoost/LightGBM"]
-        M4["✅ Model Validation<br/>Deepchecks"]
-        M5[("🏆 Model Registry<br/>Production<br/>Staging")]
-        
-        M1 --> M2 --> M3 --> M4 --> M5
+    
+    %% ML PIPELINE
+    subgraph ML["🤖 ML PIPELINE"]
+        MLF["📈<br/>MLflow"]
+        XGB["🎯<br/>XGBoost"]
+        REG["🏆<br/>Registry"]
     end
-
-    %% ============================================
-    %% PRODUCTION INFRASTRUCTURE
-    %% ============================================
-    subgraph K8S["☸️ KUBERNETES PRODUCTION"]
-        direction TB
-        K1["🔐 ConfigMap<br/>& Secrets"]
-        K2["⚡ Backend Pod<br/>FastAPI<br/>Port 5000<br/>Replicas: 2"]
-        K3["🎨 Frontend Pod<br/>Streamlit<br/>Port 8501<br/>Replicas: 1"]
-        K4["🔄 Load Balancer<br/>Service"]
-        
-        K1 -.->|Config| K2
-        K1 -.->|Config| K3
-        K2 --> K4
-        K3 --> K4
+    
+    %% MONITORING
+    subgraph MON["📡 MONITORING"]
+        EVI["👁️<br/>Evidently"]
+        DEEP["✅<br/>Deepchecks"]
     end
-
-    %% ============================================
-    %% MONITORING & OBSERVABILITY
-    %% ============================================
-    subgraph MONITOR["📡 MONITORING & OBSERVABILITY"]
-        direction TB
-        MO1["👁️ Evidently AI<br/>Data Drift"]
-        MO2["📊 Metrics<br/>Dashboard"]
-        MO3["🚨 Alert System<br/>Threshold: 0.5"]
-        MO4["📈 Performance<br/>Tracking"]
-        
-        MO1 --> MO2 --> MO3
-        MO2 --> MO4
+    
+    %% CONTAINER
+    subgraph DOCK["🐳 DOCKER"]
+        HUB["🐋<br/>Hub"]
+        BE["⚡<br/>Backend"]
+        FE["🎨<br/>Frontend"]
     end
-
-    %% ============================================
-    %% USERS & EXTERNAL
-    %% ============================================
-    USER["👥 End Users"]
-    DEV["👨‍💻 Git Push<br/>Developers"]
-    DOCKER["🐳 Docker Hub<br/>Registry"]
-
-    %% ============================================
+    
+    %% KUBERNETES
+    subgraph K8S["☸️ KUBERNETES"]
+        POD1["⚡<br/>API Pod<br/>x2"]
+        POD2["🎨<br/>UI Pod<br/>x1"]
+        LB["🔄<br/>Service"]
+    end
+    
     %% CONNECTIONS
-    %% ============================================
-    DEV ==>|"Commit Code"| J1
-    D3 ==>|"Pull Data"| J2
-    J6 -.->|"Trigger Training"| M1
-    M5 ==>|"Deploy Model"| K2
-    J7 ==>|"Push Images"| DOCKER
-    DOCKER ==>|"Pull Images"| J8
-    J8 ==>|"Update Deployment"| K2
-    J8 ==>|"Update Deployment"| K3
-    K4 ==>|"Serve Predictions"| USER
-    K2 -.->|"Log Predictions"| MO1
-    MO3 -.->|"Retrain Trigger"| J1
-
-    %% ============================================
+    DEV -->|Push| S1
+    S1 --> S2
+    S2 <-->|Sync| DVC
+    DVC <--> DAGS
+    S2 --> S3
+    S3 --> S4
+    S4 --> S5
+    S5 -->|Yes| S6
+    S5 -->|No| S7
+    S6 --> MLF
+    MLF --> XGB
+    XGB --> DEEP
+    DEEP --> REG
+    S6 --> S7
+    S7 --> BE
+    S7 --> FE
+    BE --> HUB
+    FE --> HUB
+    HUB --> S8
+    S8 --> POD1
+    S8 --> POD2
+    REG -.->|Load| POD1
+    POD1 --> LB
+    POD2 --> LB
+    LB --> USER
+    POD1 -.->|Log| EVI
+    EVI -.->|Alert| S1
+    
     %% STYLING
-    %% ============================================
-    classDef dataStyle fill:#13ADC7,stroke:#0E7C8F,stroke-width:3px,color:#fff,font-weight:bold
-    classDef cicdStyle fill:#326CE5,stroke:#1E4BA3,stroke-width:3px,color:#fff,font-weight:bold
-    classDef mlStyle fill:#0194E2,stroke:#016BA3,stroke-width:3px,color:#fff,font-weight:bold
-    classDef k8sStyle fill:#326CE5,stroke:#1E4BA3,stroke-width:3px,color:#fff,font-weight:bold
-    classDef monitorStyle fill:#FF6B35,stroke:#C54520,stroke-width:3px,color:#fff,font-weight:bold
-    classDef decisionStyle fill:#FFC300,stroke:#D4A000,stroke-width:3px,color:#000,font-weight:bold
-    classDef registryStyle fill:#28A745,stroke:#1E7E34,stroke-width:3px,color:#fff,font-weight:bold
-    classDef externalStyle fill:#6C757D,stroke:#495057,stroke-width:3px,color:#fff,font-weight:bold
-
-    class D1,D2,D3 dataStyle
-    class J1,J2,J3,J4,J7,J8 cicdStyle
-    class J5 decisionStyle
-    class J6,M1,M2,M3,M4 mlStyle
-    class M5 registryStyle
-    class K1,K2,K3,K4 k8sStyle
-    class MO1,MO2,MO3,MO4 monitorStyle
-    class USER,DEV,DOCKER externalStyle
+    classDef devStyle fill:#24292e,stroke:#fff,stroke-width:2px,color:#fff
+    classDef dataStyle fill:#13ADC7,stroke:#0E7C8F,stroke-width:3px,color:#fff
+    classDef cicdStyle fill:#D33833,stroke:#8B0000,stroke-width:3px,color:#fff
+    classDef mlStyle fill:#0194E2,stroke:#005A8D,stroke-width:3px,color:#fff
+    classDef monStyle fill:#FF6B35,stroke:#C54520,stroke-width:3px,color:#fff
+    classDef dockerStyle fill:#2496ED,stroke:#1E88E5,stroke-width:3px,color:#fff
+    classDef k8sStyle fill:#326CE5,stroke:#1E4BA3,stroke-width:3px,color:#fff
+    classDef decisionStyle fill:#FFC300,stroke:#D4A000,stroke-width:3px,color:#000
+    classDef userStyle fill:#28A745,stroke:#1E7E34,stroke-width:3px,color:#fff
+    
+    class DEV devStyle
+    class DVC,DAGS dataStyle
+    class S1,S2,S3,S4,S7,S8 cicdStyle
+    class S5 decisionStyle
+    class S6,MLF,XGB,REG mlStyle
+    class EVI,DEEP monStyle
+    class HUB,BE,FE dockerStyle
+    class POD1,POD2,LB k8sStyle
+    class USER userStyle
 ```
 
 ### 📊 Légende des Composants
