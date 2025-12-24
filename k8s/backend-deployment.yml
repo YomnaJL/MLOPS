@@ -25,7 +25,7 @@ spec:
         envFrom:
         - secretRef:
             name: mlops-secrets
-        
+#défini des limites (1Go de RAM) et des requêtes (512Mo)
         resources:
           requests:
             memory: "512Mi" # Augmenté par sécurité
@@ -33,14 +33,15 @@ spec:
           limits:
             memory: "1Gi"
             cpu: "1000m"
-
+#laisse au conteneur jusqu'à 10 minutes (60 essais x 10s) pour démarrer avant de considérer qu'il a échoué
         startupProbe:
           httpGet:
             path: /
             port: 5000
           failureThreshold: 60
           periodSeconds: 10
-        
+#Liveness Probe vérifie toutes les 20 secondes que l'API répond toujours
+#Si l'API est bloquée, Kubernetes redémarre le pod automatiquement.
         livenessProbe:
           httpGet:
             path: /

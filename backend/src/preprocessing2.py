@@ -76,8 +76,6 @@ def find_data_file(provided_path=None):
     
     # 3. Fallback : On cherche dans le dossier courant ou dossier parent (structure Jenkins)
     candidates = [
-        "data/crime_v1.csv",
-        "../data/crime_v1.csv",
         "../../data/crime_v1.csv",
         "/app/data/crime_v1.csv" # Standard Docker path
     ]

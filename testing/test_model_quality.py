@@ -74,7 +74,7 @@ def run_quality_check_from_mlflow():
         result = suite.run(train_dataset=ds_train, test_dataset=ds_test, model=model)
 
         # F. Sauvegarde du rapport HTML avec fallback
-        report_filename = f"quality_report_{model_name}.html"
+        report_filename = f"model_quality_report.html"
         try:
             result.save_as_html(report_filename, open_browser=False)
         except TypeError:

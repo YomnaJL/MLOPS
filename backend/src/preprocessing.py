@@ -234,12 +234,12 @@ def encode_features(df, encoders=None):
                 try:
                     df[col] = le.transform(df[col].astype(str))
                 except ValueError as e:
-                    # Handle unseen labels by mapping them to -1
+                    # Handle unseen labels by mapping them to 0
                     print(f"Warning: Unseen labels in {col}, mapping to -1. Error: {str(e)}")
                     # Create a mask for known vs unknown labels
                     known_mask = df[col].astype(str).isin(le.classes_)
                     df.loc[known_mask, col] = le.transform(df.loc[known_mask, col].astype(str))
-                    df.loc[~known_mask, col] = -1  # Default value for unseen labels
+                    df.loc[~known_mask, col] = 0 # Default value for unseen labels
     else:
         print("Fitting new Feature Encoders.")
         encoders = {}
