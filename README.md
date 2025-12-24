@@ -47,57 +47,159 @@
 
 ## 🏗 Architecture Technique
 
-### Architecture MLOps Globale
+### 🎯 Architecture MLOps Complète - CrimeGuard Platform
 
 ```mermaid
-graph TB
-    subgraph "Data Layer"
-        A[DVC Remote Storage<br/>DagsHub] --> B[Data Versioning]
-        B --> C[Raw Dataset<br/>LA Crime Data]
+graph LR
+    %% ============================================
+    %% DATA LAYER
+    %% ============================================
+    subgraph DATA["📊 DATA LAYER"]
+        direction TB
+        D1[("🗄️ DagsHub<br/>Remote Storage<br/>DVC")]
+        D2["📁 Crime Dataset<br/>v1.csv<br/>800K rows"]
+        D3["🔖 Data Versioning<br/>.dvc files"]
+        D1 -->|Store & Version| D2
+        D2 --> D3
     end
-    
-    subgraph "Development & CI/CD"
-        D[Git Push] --> E[Jenkins Pipeline Trigger]
-        E --> F[Stage 1: Init & Auth]
-        F --> G[Stage 2: DVC Pull]
-        G --> H[Stage 3: Unit Tests]
-        H --> I[Stage 4: Monitoring]
-        I --> J{Drift Detected?}
-        J -->|Yes| K[Stage 5: Retraining]
-        J -->|No| L[Stage 6: Docker Build]
-        K --> L
-        L --> M[Stage 7: K8s Deploy]
+
+    %% ============================================
+    %% CI/CD PIPELINE
+    %% ============================================
+    subgraph CICD["🔄 JENKINS CI/CD PIPELINE"]
+        direction TB
+        J1["🚀 Stage 1<br/>Init & Docker Login"]
+        J2["📥 Stage 2<br/>DVC Pull Data"]
+        J3["🧪 Stage 3<br/>Unit Tests<br/>Pytest"]
+        J4["📊 Stage 4<br/>Monitoring<br/>Evidently AI"]
+        J5{"⚠️ Drift<br/>Detected?"}
+        J6["🎯 Stage 5<br/>Retraining<br/>MLflow"]
+        J7["🐳 Stage 6<br/>Docker Build<br/>Backend/Frontend"]
+        J8["☸️ Stage 7<br/>K8s Deploy<br/>Rolling Update"]
+        
+        J1 --> J2 --> J3 --> J4 --> J5
+        J5 -->|"✅ Yes"| J6
+        J5 -->|"❌ No"| J7
+        J6 --> J7 --> J8
     end
-    
-    subgraph "ML Pipeline"
-        N[Feature Engineering] --> O[MLflow Experiment Tracking]
-        O --> P[Model Training<br/>XGBoost/LightGBM]
-        P --> Q[Model Validation<br/>Deepchecks]
-        Q --> R[Model Registry<br/>Production/Staging]
+
+    %% ============================================
+    %% ML TRAINING PIPELINE
+    %% ============================================
+    subgraph ML["🤖 ML TRAINING PIPELINE"]
+        direction TB
+        M1["🔧 Feature Engineering<br/>28 features"]
+        M2["📈 MLflow Tracking<br/>Experiments"]
+        M3["🎯 Model Training<br/>XGBoost/LightGBM"]
+        M4["✅ Model Validation<br/>Deepchecks"]
+        M5[("🏆 Model Registry<br/>Production<br/>Staging")]
+        
+        M1 --> M2 --> M3 --> M4 --> M5
     end
-    
-    subgraph "Production Infrastructure"
-        S[Kubernetes Cluster]
-        T[Backend Pod<br/>FastAPI] --> S
-        U[Frontend Pod<br/>Streamlit] --> S
-        V[ConfigMap<br/>Secrets] --> S
+
+    %% ============================================
+    %% PRODUCTION INFRASTRUCTURE
+    %% ============================================
+    subgraph K8S["☸️ KUBERNETES PRODUCTION"]
+        direction TB
+        K1["🔐 ConfigMap<br/>& Secrets"]
+        K2["⚡ Backend Pod<br/>FastAPI<br/>Port 5000<br/>Replicas: 2"]
+        K3["🎨 Frontend Pod<br/>Streamlit<br/>Port 8501<br/>Replicas: 1"]
+        K4["🔄 Load Balancer<br/>Service"]
+        
+        K1 -.->|Config| K2
+        K1 -.->|Config| K3
+        K2 --> K4
+        K3 --> K4
     end
-    
-    subgraph "Monitoring & Feedback"
-        W[Evidently AI<br/>Drift Detection] --> X[Metrics Dashboard]
-        X --> Y[Alert System]
-        Y -->|Trigger Retraining| E
+
+    %% ============================================
+    %% MONITORING & OBSERVABILITY
+    %% ============================================
+    subgraph MONITOR["📡 MONITORING & OBSERVABILITY"]
+        direction TB
+        MO1["👁️ Evidently AI<br/>Data Drift"]
+        MO2["📊 Metrics<br/>Dashboard"]
+        MO3["🚨 Alert System<br/>Threshold: 0.5"]
+        MO4["📈 Performance<br/>Tracking"]
+        
+        MO1 --> MO2 --> MO3
+        MO2 --> MO4
     end
-    
-    C --> N
-    R --> T
-    M --> S
-    T --> W
-    
-    style E fill:#326CE5,stroke:#fff,stroke-width:2px,color:#fff
-    style S fill:#326CE5,stroke:#fff,stroke-width:2px,color:#fff
-    style R fill:#0194E2,stroke:#fff,stroke-width:2px,color:#fff
-    style W fill:#FF6B35,stroke:#fff,stroke-width:2px,color:#fff
+
+    %% ============================================
+    %% USERS & EXTERNAL
+    %% ============================================
+    USER["👥 End Users"]
+    DEV["👨‍💻 Git Push<br/>Developers"]
+    DOCKER["🐳 Docker Hub<br/>Registry"]
+
+    %% ============================================
+    %% CONNECTIONS
+    %% ============================================
+    DEV ==>|"Commit Code"| J1
+    D3 ==>|"Pull Data"| J2
+    J6 -.->|"Trigger Training"| M1
+    M5 ==>|"Deploy Model"| K2
+    J7 ==>|"Push Images"| DOCKER
+    DOCKER ==>|"Pull Images"| J8
+    J8 ==>|"Update Deployment"| K2
+    J8 ==>|"Update Deployment"| K3
+    K4 ==>|"Serve Predictions"| USER
+    K2 -.->|"Log Predictions"| MO1
+    MO3 -.->|"Retrain Trigger"| J1
+
+    %% ============================================
+    %% STYLING
+    %% ============================================
+    classDef dataStyle fill:#13ADC7,stroke:#0E7C8F,stroke-width:3px,color:#fff,font-weight:bold
+    classDef cicdStyle fill:#326CE5,stroke:#1E4BA3,stroke-width:3px,color:#fff,font-weight:bold
+    classDef mlStyle fill:#0194E2,stroke:#016BA3,stroke-width:3px,color:#fff,font-weight:bold
+    classDef k8sStyle fill:#326CE5,stroke:#1E4BA3,stroke-width:3px,color:#fff,font-weight:bold
+    classDef monitorStyle fill:#FF6B35,stroke:#C54520,stroke-width:3px,color:#fff,font-weight:bold
+    classDef decisionStyle fill:#FFC300,stroke:#D4A000,stroke-width:3px,color:#000,font-weight:bold
+    classDef registryStyle fill:#28A745,stroke:#1E7E34,stroke-width:3px,color:#fff,font-weight:bold
+    classDef externalStyle fill:#6C757D,stroke:#495057,stroke-width:3px,color:#fff,font-weight:bold
+
+    class D1,D2,D3 dataStyle
+    class J1,J2,J3,J4,J7,J8 cicdStyle
+    class J5 decisionStyle
+    class J6,M1,M2,M3,M4 mlStyle
+    class M5 registryStyle
+    class K1,K2,K3,K4 k8sStyle
+    class MO1,MO2,MO3,MO4 monitorStyle
+    class USER,DEV,DOCKER externalStyle
+```
+
+### 📊 Légende des Composants
+
+| 🎨 Couleur | Composant | Technologies Clés |
+|-----------|-----------|-------------------|
+| 🔵 **Bleu CI/CD** | Jenkins Pipeline | Docker, Git, Pytest |
+| 💙 **Bleu ML** | Training Pipeline | MLflow, XGBoost, Scikit-learn |
+| 🟢 **Vert Registry** | Model Storage | MLflow Model Registry |
+| 🔵 **Bleu K8s** | Production | Kubernetes, FastAPI, Streamlit |
+| 🟠 **Orange Monitoring** | Observability | Evidently AI, Deepchecks |
+| 🟦 **Cyan Data** | Data Layer | DVC, DagsHub |
+| 🟡 **Jaune Decision** | Conditional Logic | Drift Detection Threshold |
+| ⚫ **Gris External** | External Systems | Docker Hub, Users |
+
+### 🔄 Flux de Données Détaillé
+
+```
+Developer Push → Jenkins Trigger → DVC Pull → Tests → Drift Check
+                                                            ↓
+                                            [Drift?] → Yes → Retrain → MLflow
+                                                ↓ No              ↓
+                                         Docker Build ← Model Registry
+                                                ↓
+                                         Push to Hub → K8s Deploy
+                                                            ↓
+                                                    FastAPI + Streamlit
+                                                            ↓
+                                                    User Predictions
+                                                            ↓
+                                                    Monitor Drift → Loop Back
 ```
 
 ### Flux de Données en Production
