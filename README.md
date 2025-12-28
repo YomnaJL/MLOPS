@@ -350,6 +350,7 @@ Tests exécutés:
   ✓ test_model_quality.py     → Validation Deepchecks (performance metrics)
 Rapport: JUnit XML pour dashboard Jenkins
 Durée moyenne: ~45s
++ 80% to pass 
 ```
 
 #### **Stage 4: Monitoring (Evidently)**
@@ -410,8 +411,8 @@ Actions:
   1. Mise à jour manifests (sed replacement des image tags)
   2. Apply ConfigMap (variables d'environnement)
   3. Apply Deployments:
-     - backend-deployment.yml (replicas: 2)
-     - frontend-deployment.yml (replicas: 1)
+     - backend-deployment.yml (replicas: 3)
+     - frontend-deployment.yml (replicas: 3)
   4. Rolling restart pour forcer pull nouvelle image
 Stratégie: RollingUpdate (maxUnavailable: 1, maxSurge: 1)
 Résultat: Zero-downtime deployment
@@ -551,18 +552,6 @@ MLOPS/
 └── 📄 README.md                        # 📖 This file
 ```
 
-### 🔑 Fichiers Clés
-
-| Fichier | Rôle | Importance |
-|---------|------|------------|
-| `Jenkinsfile` | Orchestration CI/CD complète | ⭐⭐⭐⭐⭐ |
-| `training.py` | Entraînement + MLflow tracking | ⭐⭐⭐⭐⭐ |
-| `api.py` | Endpoint d'inférence production | ⭐⭐⭐⭐⭐ |
-| `check_drift.py` | Monitoring drift automatique | ⭐⭐⭐⭐ |
-| `k8s/*.yml` | Infrastructure as Code | ⭐⭐⭐⭐ |
-| `dvc.yaml` | Reproducibilité pipeline ML | ⭐⭐⭐ |
-
----
 
 ## 🚀 Installation & Déploiement
 
@@ -944,19 +933,19 @@ Ce projet illustre une maîtrise complète des concepts MLOps modernes :
 <td align="center">
 <img src="https://github.com/ImenBenAmar.png" width="100px;" alt="Imen BenAmar"/><br />
 <b>Imen BenAmar</b><br />
-<i>MLOps Engineer</i><br />
+<i> Data science Engineer</i><br />
 <a href="https://github.com/ImenBenAmar">GitHub</a> | <a href="https://linkedin.com/in/imen-benamar">LinkedIn</a>
 </td>
 <td align="center">
 <img src="https://github.com/YomnaJL.png" width="100px;" alt="Yomna JL"/><br />
 <b>Yomna JL</b><br />
-<i>MLOps Engineer</i><br />
+<i> Data scienc Engineer</i><br />
 <a href="https://github.com/YomnaJL">GitHub</a> | <a href="https://linkedin.com/in/yomna-jl">LinkedIn</a>
 </td>
 <td align="center">
 <img src="https://github.com/fakhfakheya.png" width="100px;" alt="Eya Fakhfakh"/><br />
 <b>Eya Fakhfakh</b><br />
-<i>MLOps Engineer</i><br />
+<i> Data scienc Engineer</i><br />
 <a href="https://github.com/fakhfakheya">GitHub</a> | <a href="https://linkedin.com/in/eya-fakhfakh">LinkedIn</a>
 </td>
 </tr>
@@ -998,26 +987,7 @@ Ce projet est développé dans un cadre académique et est disponible sous licen
 ✅ **Cloud-Native** : Architecture Kubernetes scalable  
 ✅ **DevOps Culture** : IaC, GitOps-ready, secrets management  
 
-### Technologies Maîtrisées
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  ML/AI          │ Data Science    │ MLOps           │ DevOps│
-├─────────────────┼─────────────────┼─────────────────┼───────┤
-│ Scikit-Learn    │ Pandas          │ MLflow          │ Docker│
-│ XGBoost         │ NumPy           │ DVC             │ K8s   │
-│ LightGBM        │ Matplotlib      │ Evidently       │ Jenkins│
-│                 │ Seaborn         │ Deepchecks      │ Git   │
-├─────────────────┼─────────────────┼─────────────────┼───────┤
-│  Backend        │ Frontend        │ Testing         │ Cloud │
-├─────────────────┼─────────────────┼─────────────────┼───────┤
-│ FastAPI         │ Streamlit       │ Pytest          │ GCP   │
-│ Pydantic        │ Plotly          │ unittest        │ AWS   │
-│ Uvicorn         │                 │ Deepchecks      │ Azure │
-└─────────────────┴─────────────────┴─────────────────┴───────┘
-```
-
----
 
 ## 🔗 Ressources & Références
 
